@@ -1,6 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Text;
+using System.Text.RegularExpressions;
 using Mono.Options;
 
 namespace vbstags
@@ -14,6 +16,7 @@ namespace vbstags
         }
 
         private static readonly string version = "0.1";
+        private static readonly string vbsSearchPattern = "*.vbs";
         private string directory = ".";
         private bool recursive = false;
         private string tagfilename = "tags";
@@ -23,12 +26,12 @@ namespace vbstags
 
         private int StartProcessing(string[] args) {
             bool retval = false;
-            retval &= ProcessOptions(args);
-            retval &= CreateTagFile();
+            ProcessOptions(args);
+            retval = CreateTagFile();
             return (retval) ? (0) : (1);
         }
 
-        private bool ProcessOptions(string[] args) {
+        private void ProcessOptions(string[] args) {
             bool show_help = false;
             bool show_version = false;
 
@@ -42,51 +45,84 @@ namespace vbstags
                 "",
                 "Options:",
                 { "f=", "set the tag file name (most commonly tags or .tags)", v => tagfilename = v },
-                { "r|recursive", "search recursively for vbs files", v => recursive = (v != null) },
+                { "r|recursive", "search recursively for vbs files (not supported yet)", v => recursive = (v != null) },
                 { "h|help", "show this message and exit", v => show_help = (v != null) },
                 { "v|version", "show the version number of this tool", v => show_version = (v != null) }
             };
 
-            List<string> extras;
+            List<string> extras = new List<string>();
             try {
                 extras = optparser.Parse(args);
             }
             catch (OptionException oe) {
                 Console.WriteLine(oe.Message);
-                Console.WriteLine("Try dotnet run --help for more information about available options.");
-                return false;
+                Console.WriteLine("Try running with --help for more information about available options.");
+                System.Environment.Exit(2);
             }
 
             if (show_help) {
                 optparser.WriteOptionDescriptions(Console.Out);
-                return true;
+                System.Environment.Exit(0);
             }
 
             if (show_version) {
                 Console.WriteLine(version);
-                return true;
+                System.Environment.Exit(0);
             }
 
             switch (extras.Count) {
                 case 0:
-                    return true;
+                    return;
                 case 1:
                     directory = extras[0];
-                    return true;
+                    return;
                 default:
                     optparser.WriteOptionDescriptions(Console.Out);
-                    return false;
+                    break;
             }
+            System.Environment.Exit(0);
         }
 
-        private bool CreateTagFile() {            
-            using (StreamWriter tagwriter = new StreamWriter(Path.Combine(directory, tagfilename))) {
+        private bool CreateTagFile() {
+            if (!Directory.Exists(directory)) {
+                Console.WriteLine("{0}: directory does not exist.", directory);
+                return false;
+            }
+
+            List<string> tagLines = new List<string>();
+            var vbsFiles = Directory.EnumerateFiles(directory, vbsSearchPattern);
+            foreach (string filePath in vbsFiles) {
+                tagLines.AddRange(GetTagLines(filePath));
+            }
+
+            if (tagLines.Count == 0) return true;
+
+            var tagFilePath = Path.Combine(directory, tagfilename);
+            using (StreamWriter tagwriter = new StreamWriter(tagFilePath)) {
                 tagwriter.WriteLine("!_TAG_PROGRAM_AUTHOR	lacerto	//");
                 tagwriter.WriteLine("!_TAG_PROGRAM_NAME	vbs-tags	//");
                 tagwriter.WriteLine("!_TAG_PROGRAM_URL	https://github.com/lacerto/vbs-tags	/github repo/");
                 tagwriter.WriteLine("!_TAG_PROGRAM_VERSION	{0}	//", version);
+                foreach (var line in tagLines) {
+                    tagwriter.WriteLine(line);
+                }
             }
             return true;
+        }
+
+        private List<string> GetTagLines(string filePath) {
+            List<string> tagLines = new List<string>();
+            string code = File.ReadAllText(filePath);
+            Regex rx = new Regex(
+                @"^[\t ]*(Function|Sub)[\t ]*(\w*).*$", 
+                RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.Multiline
+            );
+            var matches = rx.Matches(code);
+            foreach (Match match in matches) {
+                string fileName = Path.GetFileName(filePath);
+                tagLines.Add(match.Groups[2].Value + '\t' + fileName+ "\t/^" + match.Value + "$/");
+            }
+            return tagLines;
         }
     }
 }
