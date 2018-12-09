@@ -20,8 +20,13 @@ namespace vbstags
         private string directory = ".";
         private bool recursive = false;
         private string tagfilename = "tags";
+        private Regex regex;
 
         private VBStags() {
+            regex = new Regex(
+                @"^[\t ]*(Function|Sub)[\t ]*(\w*).*$", 
+                RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.Multiline
+            );
         }
 
         private int StartProcessing(string[] args) {
@@ -92,7 +97,9 @@ namespace vbstags
             List<string> tagLines = new List<string>();
             var vbsFiles = Directory.EnumerateFiles(directory, vbsSearchPattern);
             foreach (string filePath in vbsFiles) {
-                tagLines.AddRange(GetTagLines(filePath));
+                SourceFile source = new SourceFile(filePath);
+                source.Load();
+                tagLines.AddRange(GetTagLines(source));
             }
 
             if (tagLines.Count == 0) return true;
@@ -110,22 +117,18 @@ namespace vbstags
             return true;
         }
 
-        private List<string> GetTagLines(string filePath) {
+        private List<string> GetTagLines(ISource source) {
             List<string> tagLines = new List<string>();
-            var codeLines = File.ReadLines(filePath);
-            Regex rx = new Regex(
-                @"^[\t ]*(Function|Sub)[\t ]*(\w*).*$", 
-                RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.Multiline
-            );
-            string fileName = Path.GetFileName(filePath);
+
             int lineNum = 1;
-            foreach (string line in codeLines) {
-                var matches = rx.Matches(line);
+            foreach (string line in source.CodeLines) {
+                var matches = regex.Matches(line);
                 foreach (Match match in matches) {
-                    tagLines.Add(match.Groups[2].Value + '\t' + fileName + "\t" + lineNum);
+                    tagLines.Add(match.Groups[2].Value + '\t' + source.FileName + "\t" + lineNum);
                 }
                 lineNum++;
             }
+            
             tagLines.Sort(StringComparer.InvariantCulture);
             return tagLines;
         }
