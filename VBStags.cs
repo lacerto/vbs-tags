@@ -112,16 +112,21 @@ namespace vbstags
 
         private List<string> GetTagLines(string filePath) {
             List<string> tagLines = new List<string>();
-            string code = File.ReadAllText(filePath);
+            var codeLines = File.ReadLines(filePath);
             Regex rx = new Regex(
                 @"^[\t ]*(Function|Sub)[\t ]*(\w*).*$", 
                 RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.Multiline
             );
-            var matches = rx.Matches(code);
-            foreach (Match match in matches) {
-                string fileName = Path.GetFileName(filePath);
-                tagLines.Add(match.Groups[2].Value + '\t' + fileName+ "\t/^" + match.Value + "$/");
+            string fileName = Path.GetFileName(filePath);
+            int lineNum = 1;
+            foreach (string line in codeLines) {
+                var matches = rx.Matches(line);
+                foreach (Match match in matches) {
+                    tagLines.Add(match.Groups[2].Value + '\t' + fileName + "\t" + lineNum);
+                }
+                lineNum++;
             }
+            tagLines.Sort(StringComparer.InvariantCulture);
             return tagLines;
         }
     }
